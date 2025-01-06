@@ -1,0 +1,8 @@
+flask
+jinja2
+nbconvert
+nbformat
+matplotlib
+seaborn
+litstudy
+pyvis

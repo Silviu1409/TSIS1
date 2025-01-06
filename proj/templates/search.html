@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Search Results</title>
+    <link rel="icon" href="/static/icons/favicon.ico" type="image/x-icon">
+    <link rel="stylesheet" href="/static/css/styles.css">
+</head>
+<body>
+    <header>
+        <h1>🔍 Search Results</h1>
+        <p class="subtitle">Showing results for "{{ query }}".</p>
+    </header>
+
+    <main class="container">
+        <!-- Search Form -->
+        <section class="search-section">
+            <form action="/search" method="GET" id="searchForm">
+                <div class="search-container">
+                    <input type="text" name="query" id="query" placeholder="Search again" class="search-input" value="{{ query }}" required>
+                    <button type="submit" class="search-btn">
+                        <i class="fas fa-search"></i> <!-- Magnifier icon -->
+                    </button>
+                </div>
+            </form>
+        </section>
+
+        <!-- Results Section -->
+        {% if total_results > 0 %}
+        <section class="results-section">
+            <h2 class="card-title">📚 Found {{ total_results }} result{{ total_results > 1 and 's' or '' }}:</h2>
+            <ul class="results-list">
+                {% for doc in results %}
+                <li class="result-item">
+                    <h3 class="result-title">{{ doc.title }}</h3>
+                    <p class="result-meta">
+                        <strong>Publication Year:</strong> {{ doc.publication_year }}<br>
+                        <strong>Source:</strong> {{ doc.publication_source or "N/A" }}
+                    </p>
+                    <p class="result-abstract">{{ doc.abstract or "No abstract available." }}</p>
+                </li>
+                {% endfor %}
+            </ul>
+        </section>
+        {% else %}
+        <section class="no-results">
+            <h2>No results found for "{{ query }}".</h2>
+            <p>Try searching with different keywords.</p>
+        </section>
+        {% endif %}
+
+        <!-- Back to Home -->
+        <section class="back-home">
+            <a href="/" class="primary-btn">🏠 Back to Home</a>
+        </section>
+    </main>
+
+    <footer>
+        <p>&copy; 2025 Paper Stats App</p>
+    </footer>
+</body>
+</html>

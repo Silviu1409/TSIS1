@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Paper Stats App</title>
+    <link rel="icon" href="/static/icons/favicon.ico" type="image/x-icon">
+    <link rel="stylesheet" href="/static/css/styles.css">
+</head>
+<body>
+    <header>
+        <h1>📚 Paper Stats App</h1>
+        <p class="subtitle">Effortlessly manage and analyze research papers.</p>
+    </header>
+
+    <main class="container">
+        <!-- Search Section -->
+        <section class="search-section">
+            <h2>🔍 Search Papers</h2>
+            <form action="/search" method="GET" id="searchForm">
+                <div class="search-container">
+                    <input type="text" name="query" id="query" placeholder="Enter search keywords" class="search-input" required>
+                    <button type="submit" class="search-btn">
+                        <i class="fas fa-search"></i>
+                    </button>
+                </div>
+            </form>            
+        </section>
+    
+        <!-- Upload Section -->
+        <section class="upload-section">
+            <h2>📤 Upload Papers</h2>
+            <form action="/add_papers" method="POST" enctype="multipart/form-data" id="uploadForm">
+                <label for="file" class="file-btn">
+                    <i class="fas fa-upload"></i> Select & Upload CSV Files
+                </label>
+                <input type="file" name="file" id="file" multiple hidden>
+            </form>
+        </section>
+    
+        <!-- Stats Link -->
+        <section class="stats-link">
+            <h2>📈 View Statistics</h2>
+            <a href="/stats" class="primary-btn">
+                <i class="fas fa-chart-bar"></i> Explore Stats
+            </a>
+        </section>
+    </main>        
+
+    <footer>
+        <p>&copy; 2025 Paper Stats App</p>
+    </footer>
+</body>
+</html>

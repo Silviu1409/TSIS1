@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Paper Statistics</title>
+    <link rel="icon" href="/static/icons/favicon.ico" type="image/x-icon">
+    <link rel="stylesheet" href="/static/css/styles.css">
+    <script src="/static/js/scripts.js" defer></script> <!-- The script is included only here -->
+</head>
+<body>
+    <header>
+        <h1>📊 Paper Statistics</h1>
+        <p class="subtitle">Gain insights from uploaded research papers.</p>
+    </header>
+
+    <main class="container">
+        <!-- Histograms Section -->
+        <section class="card">
+            <h2 class="card-title">📊 Histograms</h2>
+            <div class="graphs-grid histograms-grid">
+                {% for graph in histograms %}
+                <div class="graph-item">
+                    <img src="{{ graph }}" alt="Histogram" class="graph-image">
+                </div>
+                {% endfor %}
+            </div>
+        </section>
+
+        <!-- Network Visualizations Section
+        <section class="card">
+            <h2 class="card-title">🌐 Network Visualizations</h2>
+            <div class="graphs-grid networks-grid">
+                {% for network in networks %}
+                <div class="graph-item" id="{{ network.name | replace(' ', '_') }}">
+                    <h3 class="network-title">{{ network.name }}</h3>
+                    <iframe id="iframe-{{ network.name | replace(' ', '_') }}"
+                        src="{{ network.path }}" width="100%" height="50%" class="network-iframe"
+                        sandbox="allow-scripts allow-same-origin"></iframe>
+                </div>
+                {% endfor %}
+            </div>
+        </section> -->
+
+        <!-- Network Visualizations Section -->
+        <section class="card">
+            <h2 class="card-title">🌐 Network Visualizations</h2>
+            <div class="graphs-grid networks-grid">
+                {% for network in networks %}
+                <div class="graph-item" id="{{ network.name | replace(' ', '_') }}">
+                    <h3 class="network-title">{{ network.name }}</h3>
+                    <!-- Replace iframe with a button that opens the static resource in a new tab -->
+                    <a href="{{ network.path }}" target="_blank">
+                        <button class="view-network-btn">View {{ network.name }}</button>
+                    </a>
+                </div>
+                {% endfor %}
+            </div>
+        </section>
+
+        <!-- Add this section to display the stats -->
+        <section class="card">
+            <h2 class="card-title">📊 Word Distribution</h2>
+            <div class="graph-item">
+                <h3 class="stats-title">Word Distribution Graph</h3>
+                <img src="{{ word_dist_img }}" alt="Word Distribution Graph" class="graph-image">
+            </div>
+            <div class="graph-item">
+                <h3 class="stats-title">Word Distribution Table</h3>
+                <img src="{{ word_dist_table_img }}" alt="Word Distribution Table" class="graph-image">
+            </div>
+        </section>
+
+        <section class="card">
+            <h2 class="card-title">📊 Topic Modeling</h2>
+            <div class="graph-item">
+                <h3 class="stats-title">Topic Modeling Table</h3>
+                <img src="{{ topic_table_img }}" alt="Topic Modeling Table" class="graph-image">
+            </div>
+            <div class="graph-item">
+                <h3 class="stats-title">Topic Cloud</h3>
+                <img src="{{ topic_cloud_img }}" alt="Topic Cloud" class="graph-image">
+            </div>
+        </section>
+
+        <!-- Refresh Statistics Section -->
+        <section class="card refresh-card">
+            <h2 class="card-title">🔄 Refresh Statistics</h2>
+            <form action="/stats" method="GET">
+                <button type="submit" class="primary-btn">Recompute Stats</button>
+            </form>
+        </section>        
+    </main>
+
+    <footer>
+        <a href="/" class="footer-link">🏠 Back to Home</a>
+        <p>&copy; 2025 Paper Stats App</p>
+    </footer>
+
+    <!-- <script>
+        // Prepare an empty array to hold the network data
+        const networks = [];
+    
+        // Loop through networks from the Flask template and populate the array
+        {% for network in networks %}
+        console.log('network_processed');
+        networks.push({
+            name: "{{ network.name }}",
+            timestamp: "{{ network.timestamp }}"
+        });
+        {% endfor %}
+    
+        // Now save the network info with their timestamps to localStorage for later comparison
+        setNetworksInfo(networks);
+    </script> -->
+</body>
+</html>
