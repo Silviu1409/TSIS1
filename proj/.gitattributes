@@ -1,2 +1,0 @@
-/proj/data/docs_crossref.pkl filter=lfs diff=lfs merge=lfs -text
-/proj/data/docs_remaining.pkl filter=lfs diff=lfs merge=lfs -text
