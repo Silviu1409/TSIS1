@@ -16,11 +16,12 @@
     <main class="container">
         <!-- Search Form -->
         <section class="search-section">
+            <h2>🔍 Search Papers</h2>
             <form action="/search" method="GET" id="searchForm">
                 <div class="search-container">
                     <input type="text" name="query" id="query" placeholder="Search again" class="search-input" value="{{ query }}" required>
                     <button type="submit" class="search-btn">
-                        <i class="fas fa-search"></i> <!-- Magnifier icon -->
+                        <i class="fas fa-search"></i>
                     </button>
                 </div>
             </form>
@@ -30,18 +31,22 @@
         {% if total_results > 0 %}
         <section class="results-section">
             <h2 class="card-title">📚 Found {{ total_results }} result{{ total_results > 1 and 's' or '' }}:</h2>
-            <ul class="results-list">
-                {% for doc in results %}
-                <li class="result-item">
-                    <h3 class="result-title">{{ doc.title }}</h3>
-                    <p class="result-meta">
-                        <strong>Publication Year:</strong> {{ doc.publication_year }}<br>
-                        <strong>Source:</strong> {{ doc.publication_source or "N/A" }}
-                    </p>
-                    <p class="result-abstract">{{ doc.abstract or "No abstract available." }}</p>
-                </li>
-                {% endfor %}
-            </ul>
+
+            <div id="results-container">
+                <!-- Results will be rendered by JavaScript -->
+            </div>
+
+            <div id="pagination">
+                <div class="pagination">
+                    <a href="#" id="first-page" class="pagination-first" style="display:none;">&laquo;&laquo;</a>
+                    <a href="#" id="prev-page" class="pagination-prev" style="display:none;">&laquo;</a>
+            
+                    <div id="page-numbers" class="pagination-numbers"></div>
+            
+                    <a href="#" id="next-page" class="pagination-next" style="display:none;">&raquo;</a>
+                    <a href="#" id="last-page" class="pagination-last" style="display:none;">&raquo;&raquo;</a>
+                </div>
+            </div>                        
         </section>
         {% else %}
         <section class="no-results">
@@ -50,7 +55,10 @@
         </section>
         {% endif %}
 
-        <!-- Back to Home -->
+        <section>
+            <button id="stats-button" class="disabled processing-text">Processing stats...</button>
+        </section>        
+
         <section class="back-home">
             <a href="/" class="primary-btn">🏠 Back to Home</a>
         </section>
@@ -59,5 +67,188 @@
     <footer>
         <p>&copy; 2025 Paper Stats App</p>
     </footer>
+
+    <script>
+        document.addEventListener("DOMContentLoaded", () => {
+            const resultsContainer = document.getElementById("results-container");
+            const prevPageBtn = document.getElementById("prev-page");
+            const nextPageBtn = document.getElementById("next-page");
+            const firstPageBtn = document.getElementById("first-page");
+            const lastPageBtn = document.getElementById("last-page");
+            const pageNumbersContainer = document.getElementById("page-numbers");
+            const resultsPerPage = 10;
+            let currentPage = 1;
+    
+            // All results passed from the server (now in JSON-serializable format)
+            const results = {{ results|tojson }};
+            const totalResults = results.length;
+            const totalPages = Math.ceil(totalResults / resultsPerPage);
+    
+            // Function to render results based on the current page
+            function renderResults(page) {
+                const start = (page - 1) * resultsPerPage;
+                const end = start + resultsPerPage;
+    
+                // Slice the results array to get only the results for the current page
+                const paginatedResults = results.slice(start, end);
+    
+                // Render the results list
+                resultsContainer.innerHTML = paginatedResults.map((doc, index) => `
+                    <ul class="results-list">
+                        <li class="result-item">
+                            <div class="result-card">
+                                <span class="result-number">#${index + 1}</span>
+                                <h3 class="result-title">${doc.title}</h3>
+                                <p class="result-meta">
+                                    <strong>Author(s):</strong> ${doc.authors || "N/A"}<br>
+                                    <strong>Source:</strong> ${doc.publication_source || "N/A"}<br>
+                                    <strong>Publisher:</strong> ${doc.publisher || "N/A"}<br>
+                                    <strong>Publication Year:</strong> ${doc.publication_year || "N/A"}
+                                </p>
+                                <p class="result-abstract">${doc.abstract || "No abstract available."}</p>
+                                <a class="result-link" href="https://sci-hub.se/${doc.doi}" target="_blank">SciHub URL</a><br>
+                                ${doc.link ? `<a class="result-link" href="${doc.link}" target="_blank">PDF Link</a>` : ''}
+                            </div>
+                        </li>
+                    </ul>
+                `).join("");
+    
+                // Update pagination buttons visibility
+                prevPageBtn.style.display = page === 1 ? 'none' : 'inline-block';
+                nextPageBtn.style.display = page === totalPages ? 'none' : 'inline-block';
+                firstPageBtn.style.display = page === 1 ? 'none' : 'inline-block';
+                lastPageBtn.style.display = page === totalPages ? 'none' : 'inline-block';
+    
+                // Update page numbers
+                updatePageNumbers(page);
+            }
+    
+            // Function to update page numbers dynamically with ±2 pages, first, and last
+            function updatePageNumbers(currentPage) {
+                pageNumbersContainer.innerHTML = ''; // Clear existing page numbers
+    
+                const startPage = Math.max(currentPage - 2, 1);
+                const endPage = Math.min(currentPage + 2, totalPages);
+    
+                // Add the first page number only if it's not included in the ±2 range
+                if (startPage > 2) {
+                    const firstPage = document.createElement("a");
+                    firstPage.href = "#";
+                    firstPage.textContent = "1";
+                    firstPage.addEventListener("click", (event) => {
+                        event.preventDefault();
+                        currentPage = 1;
+                        renderResults(currentPage);
+                    });
+                    pageNumbersContainer.appendChild(firstPage);
+                }
+    
+                // Add ellipsis if the first page isn't close enough
+                if (startPage > 2) {
+                    const ellipsis = document.createElement("span");
+                    ellipsis.textContent = "...";
+                    pageNumbersContainer.appendChild(ellipsis);
+                }
+    
+                // Add page numbers within the ±2 range
+                for (let i = startPage; i <= endPage; i++) {
+                    const pageNumber = document.createElement("a");
+                    pageNumber.href = "#";
+                    pageNumber.textContent = i;
+                    pageNumber.className = i === currentPage ? "active" : ""; // Mark current page
+                    pageNumber.addEventListener("click", (event) => {
+                        event.preventDefault();
+                        currentPage = i;
+                        renderResults(currentPage);
+                    });
+                    pageNumbersContainer.appendChild(pageNumber);
+                }
+    
+                // Add ellipsis if the last page isn't close enough
+                if (endPage < totalPages - 1) {
+                    const ellipsis = document.createElement("span");
+                    ellipsis.textContent = "...";
+                    pageNumbersContainer.appendChild(ellipsis);
+                }
+    
+                // Add the last page number only if it's not included in the ±2 range
+                if (endPage < totalPages) {
+                    const lastPage = document.createElement("a");
+                    lastPage.href = "#";
+                    lastPage.textContent = totalPages;
+                    lastPage.addEventListener("click", (event) => {
+                        event.preventDefault();
+                        currentPage = totalPages;
+                        renderResults(currentPage);
+                    });
+                    pageNumbersContainer.appendChild(lastPage);
+                }
+            }
+    
+            // Initialize page
+            renderResults(currentPage);
+    
+            // Handle next page button click
+            nextPageBtn.addEventListener("click", () => {
+                if (currentPage < totalPages) {
+                    currentPage++;
+                    renderResults(currentPage);
+                }
+            });
+    
+            // Handle previous page button click
+            prevPageBtn.addEventListener("click", () => {
+                if (currentPage > 1) {
+                    currentPage--;
+                    renderResults(currentPage);
+                }
+            });
+    
+            // Handle first page button click
+            firstPageBtn.addEventListener("click", () => {
+                currentPage = 1;
+                renderResults(currentPage);
+            });
+    
+            // Handle last page button click
+            lastPageBtn.addEventListener("click", () => {
+                currentPage = totalPages;
+                renderResults(currentPage);
+            });
+        });
+    </script>
+
+    <script>
+        const query = "{{ query }}";
+        const checkInterval = 2000; // Poll every 3 seconds
+
+        function checkTaskStatus() {
+            fetch(`/task-status/${query}`)
+                .then(response => response.json())
+                .then(data => {
+                    const statsButton = document.getElementById('stats-button');
+                    dataStatus = data.status;
+                    
+                    if (dataStatus.status === "complete") {
+                        statsButton.style.display = "inline-block";
+                        statsButton.textContent = "View Stats";
+                        statsButton.classList.remove("disabled", "processing-text");
+                        statsButton.classList.add("enabled");  // Optionally add an enabled class
+                        statsButton.onclick = function() {
+                            window.location.href = `/stats/${query}`;
+                        };
+
+                        clearInterval(taskCheckInterval); // Stop polling
+                    } else if (dataStatus.status.startsWith("error")) {
+                        alert("An error occurred: " + dataStatus.error);
+                        
+                        clearInterval(taskCheckInterval); // Stop polling
+                    }
+                })
+                .catch(error => console.error("Error checking task status:", error));
+        }
+
+        const taskCheckInterval = setInterval(checkTaskStatus, checkInterval);
+    </script>               
 </body>
 </html>

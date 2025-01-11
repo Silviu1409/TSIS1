@@ -14,8 +14,7 @@
     </header>
 
     <main class="container">
-        <!-- Search Section -->
-        <section class="search-section">
+        <section class="card search-section">
             <h2>🔍 Search Papers</h2>
             <form action="/search" method="GET" id="searchForm">
                 <div class="search-container">
@@ -27,19 +26,18 @@
             </form>            
         </section>
     
-        <!-- Upload Section -->
-        <section class="upload-section">
+        <section class="card upload-section" id="uploadSection">
             <h2>📤 Upload Papers</h2>
             <form action="/add_papers" method="POST" enctype="multipart/form-data" id="uploadForm">
-                <label for="file" class="file-btn">
+                <label for="file" class="file-btn" id="fileBtn">
                     <i class="fas fa-upload"></i> Select & Upload CSV Files
                 </label>
                 <input type="file" name="file" id="file" multiple hidden>
+                <span id="uploadStatus" style="display: none;">Processing...</span>
             </form>
-        </section>
+        </section>               
     
-        <!-- Stats Link -->
-        <section class="stats-link">
+        <section class="card stats-link">
             <h2>📈 View Statistics</h2>
             <a href="/stats" class="primary-btn">
                 <i class="fas fa-chart-bar"></i> Explore Stats
@@ -50,5 +48,64 @@
     <footer>
         <p>&copy; 2025 Paper Stats App</p>
     </footer>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const uploadForm = document.getElementById('uploadForm');
+            const fileInput = document.getElementById('file');
+
+            uploadForm.addEventListener('submit', (event) => {
+                if (fileInput.files.length === 0) {
+                    event.preventDefault();
+                    alert('Please select at least one file to upload!');
+                }
+            });
+        });
+    </script>
+
+    <script>
+        const fileInput = document.getElementById('file');
+        const uploadSection = document.getElementById('uploadSection');
+        const fileBtn = document.getElementById('fileBtn');
+        const uploadStatus = document.getElementById('uploadStatus');
+
+        function disableUploadButton() {
+            fileBtn.classList.add('disabled'); 
+            fileBtn.textContent = "Processing..."; 
+            uploadStatus.style.display = 'inline'; 
+        }
+
+        function enableUploadButton() {
+            fileBtn.classList.remove('disabled'); 
+            fileBtn.textContent = "Select & Upload CSV Files"; 
+            uploadStatus.style.display = 'none'; 
+        }
+
+        fileInput.addEventListener('change', function() {
+            if (this.files.length > 0) {
+                disableUploadButton();
+
+                const formData = new FormData(document.getElementById('uploadForm'));
+                
+                fetch('/add_papers', {
+                    method: 'POST',
+                    body: formData
+                })
+                .then(response => {
+                    if (response.ok) {
+                        enableUploadButton();
+                        alert("File uploaded successfully!");
+                    } else {
+                        enableUploadButton();
+                        alert("Failed to upload file. Please try again.");
+                    }
+                })
+                .catch(error => {
+                    enableUploadButton();
+                    alert("An error occurred while uploading the file. Please try again.");
+                });
+            }
+        });
+    </script>
 </body>
 </html>

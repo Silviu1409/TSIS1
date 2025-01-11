@@ -1,31 +1,34 @@
-# Import other libraries
 import pickle
 import matplotlib.pyplot as plt
 import seaborn as sbs
 import litstudy
-import glob
 import os
-import io
-import base64
 import pandas as pd
-import matplotlib.backends.backend_agg as agg
 from pandas.plotting import table
 import shutil
 import logging
 from pyvis.network import Network
+import spacy
+from functools import reduce
+from operator import or_
+from threading import Event
+import app
 
 
-# Ensure the 'static/graphs' directory exists
 if not os.path.exists('static/graphs'):
     os.makedirs('static/graphs')
 
-# Set plot and logging configuration
+if not os.path.exists('data/uploads'):
+    os.makedirs('data/uploads')
+
 plt.rcParams['figure.figsize'] = (10, 6)
-sbs.set('paper')
-# logging.basicConfig(level=logging.DEBUG)
+sbs.set_theme('paper')
 logging.getLogger().setLevel(logging.CRITICAL)
 
 net = Network(notebook=True, cdn_resources='remote')
+net.repulsion()
+nlp = spacy.load("en_core_web_md")
+process_cancel_event = Event()
 
 
 def load_docs_from_pickle(pickle_file_path):
@@ -36,7 +39,7 @@ def load_docs_from_pickle(pickle_file_path):
             docs = pickle.load(f)
             print(len(docs), 'papers loaded from pickle')
     else:
-        docs = set()  # If the pickle file doesn't exist, start with an empty set
+        docs = set()
     
     return docs
 
@@ -49,87 +52,126 @@ def save_docs_to_pickle(docs, pickle_file_path):
         print(len(docs), 'papers saved to pickle')
 
 
-def load_and_process_files(files, pickle_file_path='data/docs_remaining.pkl'):
-    """Loads and merges documents from CSV files, excludes documents based on RIS files and saves the updated docs_remaining to a pickle file."""
+def load_and_process_files(files, docs_file_path='data/docs_remaining.pkl', docs_crossref_file_path='data/docs_crossref.pkl'):
+    """Loads and merges documents from CSV files, excludes documents based on RIS files, and saves them."""
+    
+    global process_cancel_event
 
-    # Load existing docs_remaining from pickle, if available
-    docs_remaining = load_docs_from_pickle(pickle_file_path)
+    process_cancel_event.clear()
 
-    docs_csv = docs_remaining  # Start with docs_remaining, and merge with new CSV data
-    docs_exclude = None
+    # Load existing docs
+    docs_remaining = load_docs_from_pickle(docs_file_path)
+    docs_crossref = load_docs_from_pickle(docs_crossref_file_path)
+
+    docs_csv = litstudy.DocumentSet(docs=[])
+    docs_exclude = litstudy.DocumentSet(docs=[])
 
     # Iterate through the uploaded files
     for file in files:
-        
-        file_path = os.path.join('data', file.filename)
-        file.save(file_path)  # Save the uploaded file
-
-        if file.filename.endswith('.csv'):
-            # If it's a CSV file, load and add to docs_csv
-            doc = litstudy.load_csv(file_path)
-            docs_csv = docs_csv | doc
-        elif file.filename.endswith('.ris'):
-            # If it's a RIS file, load and add to docs_exclude
-            doc = litstudy.load_ris_file(file_path)
-            docs_exclude = docs_exclude | doc
+        if file.rsplit('.', 1)[1].lower() == 'csv':
+            docs_csv |= litstudy.load_csv(file)
+        elif file.rsplit('.', 1)[1].lower() == 'ris':
+            docs_exclude |= litstudy.load_ris_file(file)
 
     # Exclude documents from the RIS files
-    docs_remaining = docs_csv - docs_exclude
+    docs_remaining_new = docs_csv - docs_exclude
+    docs_crossref_new, _ = litstudy.refine_crossref(docs_remaining_new, timeout=0.1)
 
-    # Save the updated docs_remaining back to the pickle file
-    save_docs_to_pickle(docs_remaining, pickle_file_path)
+    docs_remaining_new = docs_remaining | docs_remaining_new
+    docs_crossref_new = docs_crossref | docs_crossref_new
 
-    # Refine docs using CrossRef
-    docs_crossref = refine_and_save_crossref(docs_remaining)
+    save_docs_to_pickle(docs_remaining_new, 'data/docs_remaining.pkl')
+    save_docs_to_pickle(docs_crossref_new, 'data/docs_crossref.pkl')
 
-    # Generate new histograms and save them in /static/graphs
-    plot_histograms(docs_remaining)
+    # Mark stats generation as in progress
+    app.stats_in_progress = True
 
-    # Generate the co-citation and coupling networks and save them in /static/graphs
-    plot_cocitation_network(docs_crossref)
-    plot_coupling_network(docs_crossref)
+    # Perform stats processing if not canceled
+    try:
+        if not process_cancel_event.is_set():
+            plot_histograms(docs_remaining_new, docs_crossref_new, "static/graphs/")
 
-    # Generate stats
-    generate_stats(docs_remaining)
+        if not process_cancel_event.is_set():
+            plot_cocitation_network(docs_crossref_new, "static/graphs/")
 
-
-def refine_and_save_crossref(docs_remaining, pickle_file_path='data/docs_crossref.pkl'):
-    """Refines docs_remaining using CrossRef, separates found and not-found papers and saves the refined docs_crossref to a pickle file."""
+        if not process_cancel_event.is_set():
+            plot_coupling_network(docs_crossref_new, "static/graphs/")
+        
+        if not process_cancel_event.is_set():
+            generate_stats(docs_remaining_new, "static/graphs/")
+    finally:
+        app.stats_in_progress = False
     
-    docs_crossref, docs_notfound = litstudy.refine_crossref(docs_remaining)
-
-    print()
-    print(len(docs_crossref), 'papers found on CrossRef')
-    print(len(docs_notfound), 'papers were not found and were discarded')
-
-    # Save docs_crossref to a pickle file
-    save_docs_to_pickle(docs_crossref, pickle_file_path)
-
-    return docs_crossref
+    return
 
 
-def plot_histograms(docs):
+def annotate_bars(ax):
+    for bar in ax.patches:
+        if isinstance(bar, plt.Rectangle):
+            height = bar.get_height() if bar.get_height() else bar.get_width()
+            width = bar.get_width() if bar.get_width() else bar.get_height()
+
+            # Only annotate if the value is greater than 0
+            if height > 0:
+                if bar.get_height() > bar.get_width():  # Vertical bars
+                    ax.annotate(f'{int(height)}',
+                                xy=(bar.get_x() + bar.get_width() / 2, height),
+                                xytext=(0, 5),
+                                textcoords="offset points",
+                                ha='center', va='bottom', fontsize=9)
+                else:  # Horizontal bars
+                    ax.annotate(f'{int(width)}',
+                                xy=(width, bar.get_y() + bar.get_height() / 2),
+                                xytext=(5, 0),
+                                textcoords="offset points",
+                                ha='left', va='center', fontsize=9)
+
+
+def plot_histograms(docs, docs_crossref, folder):
     """Generate and save the histogram plots."""
 
     try:
         # Plot Year Histogram
-        litstudy.plot_year_histogram(docs, vertical=True)
-        plt.savefig('static/graphs/year_histogram.png')
+        _, ax = plt.subplots()
+        litstudy.plot_year_histogram(docs, vertical=True, ax=ax)
+        annotate_bars(ax)
+        plt.tight_layout()
+        plt.savefig(folder + 'year_histogram.png', bbox_inches='tight', dpi=300)
         plt.close()
 
         # Plot Affiliation Histogram
-        litstudy.plot_affiliation_histogram(docs, limit=15)
-        plt.savefig('static/graphs/affiliation_histogram.png')
+        _, ax = plt.subplots()
+        litstudy.plot_affiliation_histogram(docs, limit=15, ax=ax)
+        annotate_bars(ax)
+        plt.tight_layout()
+        plt.savefig(folder + 'affiliation_histogram.png', bbox_inches='tight', dpi=300)
         plt.close()
 
+        # Get docs that only have authors
+        docs_filtered = docs.filter_docs(lambda d: d.authors and d.authors[0].name != '')
+
         # Plot Author Histogram
-        litstudy.plot_author_histogram(docs)
-        plt.savefig('static/graphs/author_histogram.png')
+        _, ax = plt.subplots()
+        litstudy.plot_author_histogram(docs_filtered, ax=ax)
+        annotate_bars(ax)
+        plt.tight_layout()
+        plt.savefig(folder + 'author_histogram.png', bbox_inches='tight', dpi=300)
         plt.close()
 
         # Plot Number of Authors Histogram
-        litstudy.plot_number_authors_histogram(docs)
-        plt.savefig('static/graphs/number_authors_histogram.png')
+        _, ax = plt.subplots()
+        litstudy.plot_number_authors_histogram(docs, ax=ax)
+        annotate_bars(ax)
+        plt.tight_layout()
+        plt.savefig(folder + 'number_authors_histogram.png', bbox_inches='tight', dpi=300)
+        plt.close()
+
+        # Plot Publication Source Histogram
+        _, ax = plt.subplots()
+        litstudy.plot_source_histogram(docs_crossref, limit=15, ax=ax)
+        annotate_bars(ax)
+        plt.tight_layout()
+        plt.savefig(folder + 'publication_source_histogram.png', bbox_inches='tight', dpi=300)
         plt.close()
 
         logging.info("Histograms saved successfully.")
@@ -137,8 +179,9 @@ def plot_histograms(docs):
         logging.error(f"Error generating histograms: {e}")
 
 
-def plot_cocitation_network(docs_crossref):
+def plot_cocitation_network(docs_crossref, folder):
     """Generate and save the cocitation network graph to the desired location."""
+    
     try:
         # Generate the network graph, which outputs 'citation.html'
         litstudy.plot_cocitation_network(docs_crossref)
@@ -147,7 +190,7 @@ def plot_cocitation_network(docs_crossref):
         source_file = 'citation.html'
 
         # Destination path
-        output_path = 'static/graphs/cocitation_network.html'
+        output_path = folder + 'cocitation_network.html'
 
         # Ensure the source file exists
         if not os.path.exists(source_file):
@@ -160,7 +203,7 @@ def plot_cocitation_network(docs_crossref):
         logging.error(f"Error generating or moving co-citation network: {e}")
 
 
-def plot_coupling_network(docs_crossref, max_edges=5000):
+def plot_coupling_network(docs_crossref, folder, max_edges=5000):
     """Generate and save the coupling network graph to the desired location."""
     
     try:
@@ -171,7 +214,7 @@ def plot_coupling_network(docs_crossref, max_edges=5000):
         source_file = 'citation.html'
 
         # Destination path
-        output_path = 'static/graphs/coupling_network.html'
+        output_path = folder + 'coupling_network.html'
 
         # Ensure the source file exists
         if not os.path.exists(source_file):
@@ -185,10 +228,12 @@ def plot_coupling_network(docs_crossref, max_edges=5000):
 
 
 def save_table_as_png(dataframe, path, figsize=(8, 6), scale_factor=1.2):
-    fig, ax = plt.subplots(figsize=figsize)  # Set the figure size
-    ax.axis('off')  # Hide the axes
+    _, ax = plt.subplots(figsize=figsize)
+    ax.axis('off')
 
-    # Create the table
+    if dataframe.empty:
+        return
+    
     tbl = table(ax, dataframe, loc='center', colWidths=[0.3] * len(dataframe.columns))
 
     # Set font size and scale
@@ -204,13 +249,19 @@ def save_table_as_png(dataframe, path, figsize=(8, 6), scale_factor=1.2):
     plt.close()
 
 
-def generate_stats(docs, num_topics=15, ngram_threshold=0.8, save_dir="static/graphs"):
+def generate_stats(docs, save_dir, num_topics=15, ngram_threshold=0.8):
     # Build the corpus
     corpus = litstudy.build_corpus(docs, ngram_threshold=ngram_threshold)
+
+    if (len(corpus.dictionary) == 0):
+        return
     
     # 1. Save word distribution plot (graph)
     word_dist_path = os.path.join(save_dir, "word_distribution.png")
-    litstudy.plot_word_distribution(corpus, limit=50, title="Top words", vertical=True, label_rotation=45)
+    _, ax = plt.subplots()
+    litstudy.plot_word_distribution(corpus, limit=50, title="Top words", vertical=True, label_rotation=45, ax=ax)
+    annotate_bars(ax)
+    plt.tight_layout()
     plt.savefig(word_dist_path, bbox_inches='tight', dpi=300)
     plt.close()
 
@@ -226,7 +277,7 @@ def generate_stats(docs, num_topics=15, ngram_threshold=0.8, save_dir="static/gr
     topic_table_path = os.path.join(save_dir, "topic_modeling_table.png")
     topics_data = []
     for i in range(num_topics):
-        best_tokens = topic_model.best_tokens_for_topic(i)
+        best_tokens = topic_model.best_tokens_for_topic(i, 10)
         # Limit token length to avoid overlap
         truncated_tokens = ", ".join(best_tokens[:5]) + ("..." if len(best_tokens) > 5 else "")
         topics_data.append({"Top Tokens": truncated_tokens})
@@ -243,46 +294,59 @@ def generate_stats(docs, num_topics=15, ngram_threshold=0.8, save_dir="static/gr
     plt.close()
 
 
-def filter_by_title(query):
+def get_similar_words_spacy(word, similarity_threshold):
+    similar_words = set()
+    
+    # Add original word and its lemmatized form
+    doc = nlp(word)
+    similar_words.add(word)
+    for token in doc:
+        similar_words.add(token.lemma_)
+    
+    # Add similar words using word vectors
+    token = nlp(word)[0]
+    for other_token in nlp.vocab:
+        if other_token.has_vector and other_token.is_lower and other_token.is_alpha:
+            similarity = token.similarity(other_token)
+            if similarity >= similarity_threshold:
+                similar_words.add(other_token.text)
+    
+    return similar_words
+
+
+def filter_by_keyword(query):
     """Filter documents based on a keyword."""
     
     docs = load_docs_from_pickle('data/docs_remaining.pkl')
-    query_lower = query.lower()
+    docs_crossref = load_docs_from_pickle('data/docs_crossref.pkl')
+    query_lower = query.lower().split()
 
-    filtered_docs = [d for d in docs 
-        if query_lower in d.title.lower() or any(query_lower in keyword.lower() for sublist in (d.keywords or []) for keyword in sublist)
-    ]
+    search_words = reduce(or_, [get_similar_words_spacy(x, 0.5) for x in query_lower])
 
-    print(f"\nSearch Results for '{query}':")
-    if not filtered_docs:
-        print("No documents found.")
-        return
+    filtered_docs = docs.filter_docs(
+        lambda d: any(
+            q in d.title.lower().strip() or
+            any(
+                q in split_word.lower() 
+                for sublist in (d.keywords or []) 
+                for keyword in sublist 
+                for split_word in keyword.split()
+            )
+            for q in search_words
+        )
+    )
 
-    # Limit the output to top 10 results
-    for i, doc in enumerate(filtered_docs[:10], 1):
-        # print(f"{i}. Document Details:")
-        # for field in dir(doc):
-        #     # Filter out private and built-in attributes (starting with '_')
-        #     if not field.startswith('_'):
-        #         value = getattr(doc, field)
-        #         try:
-        #             # Format the output for lists
-        #             if isinstance(value, list):
-        #                 value = ', '.join(str(item) for item in value) if value else 'N/A'
-        #             # Truncate long strings
-        #             elif isinstance(value, str) and len(value) > 200:
-        #                 value = f"{value[:200]}..."
-        #             # Handle other types (convert to string)
-        #             else:
-        #                 value = str(value) if value is not None else 'N/A'
-        #         except Exception as e:
-        #             value = f"Error converting field: {e}"
-        #         print(f"   {field.capitalize()}: {value}")
-        print(f"{i}. Document keywords: {', '.join(str(item) for item in doc.keywords) if doc.keywords and len(doc.keywords) > 0 else 'N/A'}")
-        print("\n" + "="*50 + "\n")
-
-    # If there are more results, indicate that not all were shown
-    if len(filtered_docs) > 10:
-        print(f"...and {len(filtered_docs) - 10} more results not shown.")
+    import re
+    filtered_dois = {
+        re.search(r"'doi': '([^']+)'", str(doc.__dict__['_identifier'])).group(1).strip()
+        for doc in filtered_docs
+        if re.search(r"'doi': '([^']+)'", str(doc.__dict__['_identifier']))
+    }
+    filtered_docs_crossref = docs_crossref.filter_docs(lambda d: d.id.doi.strip() in filtered_dois)
+    filtered_dois = {
+        doc.id.doi.strip()
+        for doc in filtered_docs_crossref
+    }
+    filtered_docs = filtered_docs.filter_docs(lambda d: d.id.doi and d.id.doi.strip() in filtered_dois)
     
-    return filtered_docs
+    return filtered_docs, filtered_docs_crossref
