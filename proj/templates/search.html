@@ -220,7 +220,7 @@
 
     <script>
         const query = "{{ query }}";
-        const checkInterval = 2000; // Poll every 3 seconds
+        const checkInterval = 2000;
 
         function checkTaskStatus() {
             fetch(`/task-status/${query}`)
@@ -233,9 +233,9 @@
                         statsButton.style.display = "inline-block";
                         statsButton.textContent = "View Stats";
                         statsButton.classList.remove("disabled", "processing-text");
-                        statsButton.classList.add("enabled");  // Optionally add an enabled class
+                        statsButton.classList.add("enabled");
                         statsButton.onclick = function() {
-                            window.location.href = `/stats/${query}`;
+                            window.open(`/stats/${query}`, '_blank');
                         };
 
                         clearInterval(taskCheckInterval); // Stop polling

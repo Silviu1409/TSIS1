@@ -10,7 +10,11 @@
 <body>
     <header>
         <h1>📊 Paper Statistics</h1>
+        {% if query %}
+        <p class="subtitle">Gain insights from search: <strong>{{ query }}</strong>.</p>
+        {% else %}
         <p class="subtitle">Gain insights from uploaded research papers.</p>
+        {% endif %}
     </header>
 
     <main class="container">

@@ -124,6 +124,7 @@ def add_papers():
                 upload_in_progress = False
 
     thread = Thread(target=process_files)
+    thread.daemon = True
     thread.start()
 
     return redirect(url_for('stats'))
@@ -214,6 +215,7 @@ def search():
 
     # Start the background thread for heavy computation
     thread = Thread(target=generate_custom_stats, args=(query,))
+    thread.daemon = True
     thread.start()
     
     return render_template(
@@ -237,7 +239,7 @@ def stats_page(query):
     """Render the stats page with the generated diagram paths."""
     
     paths = task_status.get(query, {}).get("paths", {})
-    return render_template('stats.html', histograms=paths['histograms'], networks=paths['networks'], word_dists=paths['word_dists'], topics=paths['topics'])
+    return render_template('stats.html', query=query, histograms=paths['histograms'], networks=paths['networks'], word_dists=paths['word_dists'], topics=paths['topics'])
 
 
 if __name__ == "__main__":
